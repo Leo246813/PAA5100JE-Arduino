@@ -28,8 +28,6 @@ flo = FlowSensor()
 flo.set_rotation(FlowSensor.DEGREES_0)
 
 # Initial positions
-#tx = 0
-#ty = 0
 x = 0
 y = 0
 
@@ -38,8 +36,5 @@ while True:
     if delta is not None:
         x = delta[0]
         y = delta[1]
-        #tx += x
-        #ty += y
-        #print("Relative: x {}, y {} | Absolute: tx {}, ty {}".format(x, y, tx, ty))
         print("Relative: x {}, y {}".format(x, y))
     time.sleep(0.1)
