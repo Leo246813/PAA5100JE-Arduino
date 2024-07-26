@@ -46,9 +46,9 @@ class Movements:
 
     def tilt_angle(self):
     # Calculate tilt angle with respect to positive y axis (in degrees)
-        if self.curr_y == self.prev_y:
+        if self.curr_y == 0:
             return 0
-        angle = math.atan2(self.dx, self.dy) * 180 / math.pi
+        angle = math.atan2(self.curr_x, self.curr_y) * 180 / math.pi
         return angle
 
 if __name__ == "__main__":
