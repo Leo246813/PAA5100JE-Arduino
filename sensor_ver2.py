@@ -1,6 +1,5 @@
 import time, math
 from machine import Pin, SPI
-import _thread
 from breakout_paa5100 import BreakoutPAA5100
 
 class PAA5100JE:
@@ -30,7 +29,7 @@ class PAA5100JE:
         return self.x, self.y
 
     def shut_down(self, deinitSPI=True):
-        self.cs.value(1)
+        self.cs.value(1) # Deselect the device
         if deinitSPI:
             self.spi.deinit()
         
@@ -44,10 +43,6 @@ class MotionSensor:
         
         self.prev_x = 0
         self.prev_y = 0
-        '''
-        # Automatically start recording upon initialization
-        self._thread = _thread.start_new_thread(self._record_loop, ())
-        '''
         
     def record(self):
         # Units are in millimeters
