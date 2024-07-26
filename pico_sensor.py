@@ -8,11 +8,11 @@ class SPIInterface:
                        sck=Pin(sck_pin), mosi=Pin(mosi_pin), miso=Pin(miso_pin))
         self.cs = Pin(cs_pin, Pin.OUT)
     
-    def spi_write_read(self, write_data):
+    def send_values(self, values):
         self.cs.value(0)  # Select the device
-        read_data = self.spi.readinto(write_data)
+        for value in values:
+            self.spi.write(value.to_bytes(2, 'big'))  # Sending each value as 2 bytes
         self.cs.value(1)  # Deselect the device
-        return read_data
     
 class MotionSensor:
     def __init__(self, spi, cs, sck, mosi, miso):
@@ -109,7 +109,11 @@ if __name__ == "__main__":
         print(f"x coordinate: {x_coords[j]:>10.5f} | y coordinate: {y_coords[j]:>10.5f} | Displacement: {disps[j]:>12.5f} | Tilt angle: {angles[j]:>11.5f}")
     
     '''
-    # Actual   
+    # Actual
+    # Initialize previous coordinates
+    prev_x = 0
+    prev_y = 0
+    
     while True:
         # Units are in millimeters
         current_motion_x = motion_sensor_x.read_motion()
@@ -128,6 +132,10 @@ if __name__ == "__main__":
             prev_y = curr_y
         
         print(f"x coordinate: {curr_x:>10.5f} | y coordinate: {curr_y:>10.5f} | Displacement: {disp:>12.5f} | Tilt angle: {angle:>11.5f}")
+        
+        # Connect to main microcontroller through SPI
+        spi_connect = SPIInterface(0, , , , )
+        spi_connect.send_values([curr_x, curr_y, disp, angle])
 
         time.sleep(0.01)  # get data every 10ms
     '''
