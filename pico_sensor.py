@@ -22,6 +22,7 @@ class MotionSensor:
         self.y = 0
 
     def read_motion(self):
+    # Read x and y coordinates from PAA5100JE sensor
         delta = self.flo.get_motion()
         if delta is not None:
             self.x, self.y = delta
@@ -37,12 +38,14 @@ class Movements:
         self.curr_y = curr_y
         
     def displacement(self):
+    # Calculate displacement using the change of coordinates with time
         self.dx = self.curr_x - self.prev_x
         self.dy = self.curr_y - self.prev_y
         disp = math.sqrt(self.dx**2 + self.dy**2)
         return disp
 
     def tilt_angle(self):
+    # Calculate tilt angle using the change of coordinates with time
         if self.curr_x == self.prev_x:
             return 0
         angle = math.atan2(self.dy, self.dx) * 180 / math.pi
