@@ -107,21 +107,27 @@ class MotionDetector():
         self._threshold = threshold
         self.calib_coef = calib_coef
         
+        # Motion sensor variables
+        self.x_buffer = bytearray(2)
+        self.y_buffer = bytearray(2)
+        self.x_buffer_mv = memoryview(self.x_buffer)
+        self.y_buffer_mv = memoryview(self.y_buffer)
+        
         self.prev_x = 0
-        self.prev_y = 0        
+        self.prev_y = 0
         self.delta_x, self.delta_y = 0, 0    # accumulated position
         self._delta_x, self._delta_y = 0, 0  # instantaneous position
         self.x, self.y = 0, 0  # to be accessed from the task, unit=mm
         
-        # Parent
-        Analog_input.__init__(self, pin=None, name=name + '-X', sampling_rate=int(sampling_rate),
-                              threshold=threshold, rising_event=event, falling_event=None,
-                              data_type='l')
-        self.data_chx = self.data_channel
-        self.data_chy = Data_channel(name + '-Y', sampling_rate, data_type='l')
-        self.crossing_direction = True  # to conform to the Analog_input syntax
-        self.timestamp = fw.current_time
-        self.acquiring = False
+#         # Parent
+#         Analog_input.__init__(self, pin=None, name=name + '-X', sampling_rate=int(sampling_rate),
+#                               threshold=threshold, rising_event=event, falling_event=None,
+#                               data_type='l')
+#         self.data_chx = self.data_channel
+#         self.data_chy = Data_channel(name + '-Y', sampling_rate, data_type='l')
+#         self.crossing_direction = True  # to conform to the Analog_input syntax
+#         self.timestamp = fw.current_time
+#         self.acquiring = False
         
         gc.collect()
         time.sleep_ms(2)
@@ -146,8 +152,11 @@ class MotionDetector():
         current_motion_y = self.motSen_y.read_motion()
         
         if current_motion_x is not None and current_motion_y is not None:
-            self.delta_x = current_motion_x[0]
-            self.delta_y = current_motion_y[1]
+            self.x_buffer_mv = current_motion_x
+            self.y_buffer_mv = current_motion_y
+
+            self.delta_x = self.x_buffer_mv[0]
+            self.delta_y = self.y_buffer_mv[1]
 
             self._delta_x = self.delta_x - self.prev_x
             self._delta_y = self.delta_y - self.prev_y
