@@ -3,9 +3,10 @@ from machine import Pin, SPI
 from pyControl.hardware import *
 from breakout_paa5100 import BreakoutPAA5100
 '''
-ImportError: no pyControl module in my laptop for some reason
+ImportError: could not import pyControl module because RP pico doesn't have enough space
 Changes: Digital_output changed to Pin (self.select.on/off --> value(0/1))
          Cannot test for Analog_input and related functions
+         PAA5100JE does not have SROM ID, need to change way to interrupt queue
 '''
 
 class PAA5100JE():
@@ -151,10 +152,10 @@ class MotionDetector(Analog_input):
 
     def tilt_angle(self):
         # Calculate tilt angle with respect to positive y axis (in degrees)
-        if self.curr_y == 0:
+        if self.delta_y == 0:
             return 0
-        angle = math.atan2(self.curr_x, self.curr_y) * 180 / math.pi
-        return angle    
+        angle = math.atan2(self.delta_x, self.delta_y) * 180 / math.pi
+        return angle
     
     def _timer_ISR(self, t):
         "Read a sample to the buffer, update write index."
