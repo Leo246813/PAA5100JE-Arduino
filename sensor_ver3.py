@@ -1,6 +1,6 @@
 import time, math, gc
 from machine import Pin, SPI
-from pyControl.hardware import *
+#from pyControl.hardware import *
 from breakout_paa5100 import BreakoutPAA5100
 '''
 ImportError: could not import pyControl module because RP pico doesn't have enough space
@@ -72,8 +72,11 @@ class PAA5100JE():
         self.select.value(1)
     
     def config(self):
-        ID = int.from_bytes(self.read_register(0x2a), 'little')
-        assert ID == 0x04, "bad SROM v={}".format(ID)
+        #ID = self.flo.get_id()
+
+        #ID = int.from_bytes(self.read_register(0x5B), 'little')
+        #assert ID == 0x04, "bad SROM v={}".format(ID)
+        self.CPI = int.from_bytes(self.read_register(0x4E), 'little') * 100   # why is CPI set like that
         self.select.value(1)
         time.sleep_ms(10)
         
@@ -87,19 +90,21 @@ class PAA5100JE():
         if deinitSPI:
             self.spi.deinit()
         
-class MotionDetector(Analog_input):
+class MotionDetector():
     def __init__(self, reset, cs1, cs2,
                  name='MotDet', threshold=1, calib_coef=1,
                  sampling_rate=100, event='motion'):
         
-        # Create SPI objects (SPI_type, sck, mosi, miso, cs)
+        # Create SPI objects
         # change to same SPI because same sck used (and change chip select)
         self.motSen_x = PAA5100JE(0, reset, cs1, 18, 19, 16)
         self.motSen_y = PAA5100JE(1, reset, cs2, 10, 11, 12)
         
-        motSen_x.config()
-        motSen_y.config()
-        self.threshold = threshold
+        self.motSen_x.config()
+        self.motSen_y.config()
+        print(f"Sensor X ID: {self.motSen_x.config()} | Sensor Y ID: {self.motSen_y.config()}")
+
+        self._threshold = threshold
         self.calib_coef = calib_coef
         
         self.prev_x = 0
@@ -120,7 +125,17 @@ class MotionDetector(Analog_input):
         
         gc.collect()
         time.sleep_ms(2)
-      
+    
+    @property
+    def threshold(self):
+        "return the value in cms"
+        return math.sqrt(self._threshold) / self.motSen_x.CPI * 2.54
+
+    @threshold.setter
+    def threshold(self, new_threshold):
+        self._threshold = int((new_threshold / 2.54 * self.motSen_x.CPI)**2) * self.calib_coef
+        self.reset_delta()
+    
     def reset_delta(self):
         # reset the accumulated position data
         self.delta_x, self.delta_y = 0, 0
@@ -142,9 +157,9 @@ class MotionDetector(Analog_input):
             self.prev_y = self.delta_y
         
         disp = self.displacement()
-        angle = self.tilt_angle()        
-        print(f"x coordinate: {self.curr_x:>10.5f} | y coordinate: {self.curr_y:>10.5f} | Displacement: {disp:>12.5f} | Tilt angle: {angle:>11.5f}")
-    
+        angle = self.tilt_angle()
+        print(f"x coordinate: {self.delta_x:>10.5f} | y coordinate: {self.delta_y:>10.5f} | Displacement: {disp:>12.5f} | Tilt angle: {angle:>11.5f}")
+        
     def displacement(self):
         # Calculate displacement using the change of coordinates with time
         disp = math.sqrt(self._delta_x**2 + self._delta_y**2)
@@ -155,7 +170,7 @@ class MotionDetector(Analog_input):
         if self.delta_y == 0:
             return 0
         angle = math.atan2(self.delta_x, self.delta_y) * 180 / math.pi
-        return angle
+        return angle    
     
     def _timer_ISR(self, t):
         "Read a sample to the buffer, update write index."
@@ -163,7 +178,7 @@ class MotionDetector(Analog_input):
         self.data_chx.put(self._delta_x)
         self.data_chy.put(self._delta_y)
 
-        if self.delta_x**2 + self.delta_y**2 >= self.threshold:
+        if self.delta_x**2 + self.delta_y**2 >= self._threshold:
             self.x = self.delta_x
             self.y = self.delta_y
             self.reset_delta()
@@ -192,3 +207,9 @@ class MotionDetector(Analog_input):
         self.data_chy.record()
         if not self.acquiring:
             self._start_acquisition()
+
+# --------------------------------------------------------
+if __name__ == "__main__":    
+    motion_sensor = MotionDetector(7, 17, 13) # add reset in reality
+    while True:
+        motion_sensor.read_sample()
