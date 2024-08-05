@@ -129,11 +129,11 @@ class MotionDetector():
     @property
     def threshold(self):
         "return the value in cms"
-        return math.sqrt(self._threshold) / self.motSen_x.CPI * 2.54
+        return math.sqrt(self._threshold) / self.motSen_x.CPI
 
     @threshold.setter
     def threshold(self, new_threshold):
-        self._threshold = int((new_threshold / 2.54 * self.motSen_x.CPI)**2) * self.calib_coef
+        self._threshold = int((new_threshold * self.motSen_x.CPI)**2) * self.calib_coef
         self.reset_delta()
     
     def reset_delta(self):
