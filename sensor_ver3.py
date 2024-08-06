@@ -1,24 +1,27 @@
 import time, math, gc
+from array import array
 from machine import Pin, SPI
 #from pyControl.hardware import *
 from breakout_paa5100 import BreakoutPAA5100
 '''
 ImportError: could not import pyControl module because RP pico doesn't have enough space
+Insufficient info in specs:
 Changes: Digital_output changed to Pin (self.select.on/off --> value(0/1))
          Cannot test for Analog_input and related functions
          PAA5100JE does not have SROM ID, need to change way to interrupt queue
+         Threshold: can't find CPI, assume to be resolution and same calculation
 '''
 
 class PAA5100JE():
     def __init__(self,
-                 SPI_type: str,
-                 reset: int = 0,
+                 SPI_type: int,
+                 reset: int,
                  cs_pin: int = 0,
                  sck_pin: int = 0,
                  mosi_pin: int = 0,
                  miso_pin: int = 0):
         
-        self.spi = SPI(SPI_type, baudrate=9600, polarity=0, phase=0, bits=16, firstbit=SPI.MSB,
+        self.spi = SPI(SPI_type, baudrate=9600, polarity=0, phase=0, bits=8, firstbit=SPI.MSB,
                        sck=Pin(sck_pin, mode=0, pull=1), mosi=Pin(mosi_pin, mode=0, pull=1),
                        miso=Pin(miso_pin, mode=1))
         
@@ -32,7 +35,7 @@ class PAA5100JE():
         self.reset.value(1)
         
         time.sleep_ms(50) # Motion delay after reset
-
+        
         self.flo = BreakoutPAA5100(SPI_type, cs_pin, sck_pin, mosi_pin, miso_pin)
         self.flo.set_rotation(BreakoutPAA5100.DEGREES_0)
         self.x = 0
@@ -47,13 +50,28 @@ class PAA5100JE():
         addrs = addrs.to_bytes(1, 'little')
         self.select.value(0)
         self.spi.write(addrs)
-        time.sleep_us(100)  # tSRAD
+        time.sleep_us(2)  # tSRAD
         data = self.spi.read(1)
         time.sleep_us(1)  # tSCLK-NCS for read operation is 120ns
         self.select.value(1)
         time.sleep_us(19)  # tSRW/tSRR (=20us) minus tSCLK-NCS
         return data
-        
+       
+    def write_register(self, addrs: int, data: int):
+        """
+        addrs < 128
+        """
+        # flip the MSB to 1:
+        addrs = addrs | 0x80
+        addrs = addrs.to_bytes(1, 'little')
+        data = data.to_bytes(1, 'little')
+        self.select.value(0)
+        self.spi.write(addrs)
+        self.spi.write(data)
+        time.sleep_us(20)  # tSCLK-NCS for write operation
+        self.select.value(1)
+        time.sleep_us(100)  # tSWW/tSWR (=120us) minus tSCLK-NCS. Could be shortened, but is looks like a safe lower bound
+   
     def send_values(self, values):
         self.select.value(0)  # Select the device
         for value in values:
@@ -72,13 +90,21 @@ class PAA5100JE():
         self.select.value(1)
     
     def config(self):
+        self.select.value(0)
         #ID = self.flo.get_id()
-
-        #ID = int.from_bytes(self.read_register(0x5B), 'little')
-        #assert ID == 0x04, "bad SROM v={}".format(ID)
-        self.CPI = int.from_bytes(self.read_register(0x4E), 'little') * 100   # why is CPI set like that
+        
+        # Check Observation register if SROM is running
+        self.write_register(0x15, 0x00)
+        time.sleep_us(50)
+        obs = int.from_bytes(self.read_register(0x15), 'little')
+        
+        # Set threshold
+        #self.write_register(0x4E, 0x14)  # reset resolution register
+        # Assume same settings as PWM3360DM
+        self.CPI = int.from_bytes(self.read_register(0x4E), 'little') * 100
         self.select.value(1)
-        time.sleep_ms(10)
+        time.sleep_ms(1)
+        return self.CPI, obs
         
     def shut_down(self, deinitSPI=True):
         self.select.value(0) # Select the device
@@ -96,7 +122,7 @@ class MotionDetector():
                  sampling_rate=100, event='motion'):
         
         # Create SPI objects
-        # change to same SPI because same sck used (and change chip select)
+        # change to same SPI because same sck used
         self.motSen_x = PAA5100JE(0, reset, cs1, 18, 19, 16)
         self.motSen_y = PAA5100JE(1, reset, cs2, 10, 11, 12)
         
@@ -108,8 +134,8 @@ class MotionDetector():
         self.calib_coef = calib_coef
         
         # Motion sensor variables
-        self.x_buffer = bytearray(2)
-        self.y_buffer = bytearray(2)
+        self.x_buffer = array('i', [0, 0])
+        self.y_buffer = array('i', [0, 0])
         self.x_buffer_mv = memoryview(self.x_buffer)
         self.y_buffer_mv = memoryview(self.y_buffer)
         
@@ -135,17 +161,17 @@ class MotionDetector():
     @property
     def threshold(self):
         "return the value in cms"
-        return math.sqrt(self._threshold) / self.motSen_x.CPI
-
+        return math.sqrt(self._threshold) / self.motSen_x.CPI * 2.54
+    
     @threshold.setter
     def threshold(self, new_threshold):
-        self._threshold = int((new_threshold * self.motSen_x.CPI)**2) * self.calib_coef
+        self._threshold = int((new_threshold / 2.54 * self.motSen_x.CPI)**2) * self.calib_coef
         self.reset_delta()
     
     def reset_delta(self):
         # reset the accumulated position data
         self.delta_x, self.delta_y = 0, 0
-        
+    
     def read_sample(self):
         # Units are in millimeters
         current_motion_x = self.motSen_x.read_motion()
@@ -167,8 +193,10 @@ class MotionDetector():
         
         disp = self.displacement()
         angle = self.tilt_angle()
-        print(f"x coordinate: {self.delta_x:>10.5f} | y coordinate: {self.delta_y:>10.5f} | Displacement: {disp:>12.5f} | Tilt angle: {angle:>11.5f}")
         
+        if self.delta_x**2 + self.delta_y**2 >= self._threshold:
+            print(f"x coordinate: {self.delta_x:>10.5f} | y coordinate: {self.delta_y:>10.5f} | Displacement: {disp:>12.5f} | Tilt angle: {angle:>11.5f}")
+                
     def displacement(self):
         # Calculate displacement using the change of coordinates with time
         disp = math.sqrt(self._delta_x**2 + self._delta_y**2)
@@ -192,7 +220,7 @@ class MotionDetector():
             self.y = self.delta_y
             self.reset_delta()
             self.timestamp = fw.current_time
-            interrupt_queue.put(self.ID)
+            interrupt_queue.put(self.ID) ### no self.ID defined
 
     def _stop_acquisition(self):
         # Stop sampling analog input values.
@@ -219,6 +247,6 @@ class MotionDetector():
 
 # --------------------------------------------------------
 if __name__ == "__main__":    
-    motion_sensor = MotionDetector(7, 17, 13) # add reset in reality
+    motion_sensor = MotionDetector(7, 17, 13)
     while True:
         motion_sensor.read_sample()
