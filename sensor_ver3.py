@@ -9,7 +9,7 @@ Insufficient info in specs:
 Changes: Digital_output changed to Pin (self.select.on/off --> value(0/1))
          Cannot test for Analog_input and related functions
          PAA5100JE does not have SROM ID, need to change way to interrupt queue
-         Threshold: can't find CPI, assume to be resolution and same calculation
+         Threshold: can't find CPI settings, assume to be resolution hence same calculation
 '''
 
 class PAA5100JE():
@@ -220,7 +220,7 @@ class MotionDetector():
             self.y = self.delta_y
             self.reset_delta()
             self.timestamp = fw.current_time
-            interrupt_queue.put(self.ID) ### no self.ID defined
+            interrupt_queue.put(self.ID) ### no self.ID (use timer/GPIO interrupt pin)
 
     def _stop_acquisition(self):
         # Stop sampling analog input values.
